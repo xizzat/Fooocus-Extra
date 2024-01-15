@@ -6,6 +6,8 @@ class AsyncTask:
         self.args = args
         self.yields = []
         self.results = []
+        self.last_stop = False
+        self.processing = False
 
 
 async_tasks = []
@@ -13,7 +15,6 @@ async_tasks = []
 
 def worker():
     global async_tasks
-
     import traceback
     import math
     import numpy as np
@@ -36,6 +37,8 @@ def worker():
     import extras.face_crop
     import fooocus_version
 
+    from modules.censor import censor_batch
+
     from modules.sdxl_styles import apply_style, apply_wildcards, fooocus_expansion
     from modules.private_logger import log
     from extras.expansion import safe_str
@@ -56,9 +59,13 @@ def worker():
         print(f'[Fooocus] {text}')
         async_task.yields.append(['preview', (number, text, None)])
 
-    def yield_result(async_task, imgs, do_not_show_finished_images=False):
+    def yield_result(async_task, imgs, do_not_show_finished_images=False, progressbar_index=13):
         if not isinstance(imgs, list):
             imgs = [imgs]
+
+        if modules.config.default_black_out_nsfw or advanced_parameters.black_out_nsfw:
+            progressbar(async_task, progressbar_index, 'Checking for NSFW content ...')
+            imgs = censor_batch(imgs)
 
         async_task.results = async_task.results + imgs
 
@@ -115,16 +122,19 @@ def worker():
     @torch.inference_mode()
     def handler(async_task):
         execution_start_time = time.perf_counter()
+        async_task.processing = True
 
         args = async_task.args
         args.reverse()
 
         prompt = args.pop()
         negative_prompt = args.pop()
+        translate_prompts = args.pop()
         style_selections = args.pop()
         performance_selection = args.pop()
         aspect_ratios_selection = args.pop()
         image_number = args.pop()
+        image_file_extension = args.pop()
         image_seed = args.pop()
         sharpness = args.pop()
         guidance_scale = args.pop()
@@ -196,6 +206,11 @@ def worker():
             modules.patch.negative_adm_scale = advanced_parameters.adm_scaler_negative = 1.0
             modules.patch.adm_scaler_end = advanced_parameters.adm_scaler_end = 0.0
             steps = 8
+
+        if translate_prompts:
+            from modules.translator import translate2en
+            prompt = translate2en(prompt, 'prompt')
+            negative_prompt = translate2en(negative_prompt, 'negative prompt')
 
         modules.patch.adaptive_cfg = advanced_parameters.adaptive_cfg
         print(f'[Parameters] Adaptive CFG = {modules.patch.adaptive_cfg}')
@@ -376,6 +391,7 @@ def worker():
 
             progressbar(async_task, 3, 'Processing prompts ...')
             tasks = []
+            
             for i in range(image_number):
                 task_seed = (seed + i) % (constants.MAX_SEED + 1)  # randint is inclusive, % is not
                 task_rng = random.Random(task_seed)  # may bind to inpaint noise in the future
@@ -511,8 +527,8 @@ def worker():
 
             if direct_return:
                 d = [('Upscale (Fast)', '2x')]
-                log(uov_input_image, d)
-                yield_result(async_task, uov_input_image, do_not_show_finished_images=True)
+                uov_input_image_path = log(uov_input_image, d, image_file_extension)
+                yield_result(async_task, uov_input_image_path, do_not_show_finished_images=True)
                 return
 
             tiled = True
@@ -732,13 +748,15 @@ def worker():
             done_steps = current_task_id * steps + step
             async_task.yields.append(['preview', (
                 int(15.0 + 85.0 * float(done_steps) / float(all_steps)),
-                f'Step {step}/{total_steps} in the {current_task_id + 1}-th Sampling',
+                f'Sampling Image {current_task_id + 1}/{image_number}, Step {step + 1}/{total_steps} ...',
                 y)])
 
         for current_task_id, task in enumerate(tasks):
             execution_start_time = time.perf_counter()
 
             try:
+                if async_task.last_stop is not False:
+                    ldm_patched.model_management.interrupt_current_processing()
                 positive_cond, negative_cond = task['c'], task['uc']
 
                 if 'cn' in goals:
@@ -774,6 +792,7 @@ def worker():
                 if inpaint_worker.current_task is not None:
                     imgs = [inpaint_worker.current_task.post_process(x) for x in imgs]
 
+                img_paths = []
                 for x in imgs:
                     d = [
                         ('Prompt', task['log_positive_prompt']),
@@ -793,18 +812,20 @@ def worker():
                         ('Refiner Switch', refiner_switch),
                         ('Sampler', sampler_name),
                         ('Scheduler', scheduler_name),
+                        ('Sampling Steps Override', advanced_parameters.overwrite_step),
                         ('Seed', task['task_seed']),
                     ]
                     for li, (n, w) in enumerate(loras):
                         if n != 'None':
                             d.append((f'LoRA {li + 1}', f'{n} : {w}'))
                     d.append(('Version', 'v' + fooocus_version.version))
-                    log(x, d)
+                    img_paths.append(log(x, d, image_file_extension))
 
-                yield_result(async_task, imgs, do_not_show_finished_images=len(tasks) == 1)
+                yield_result(async_task, img_paths, do_not_show_finished_images=len(tasks) == 1, progressbar_index=int(15.0 + 85.0 * float((current_task_id + 1) * steps) / float(all_steps)))
             except ldm_patched.modules.model_management.InterruptProcessingException as e:
-                if shared.last_stop == 'skip':
+                if async_task.last_stop == 'skip':
                     print('User skipped')
+                    async_task.last_stop = False
                     continue
                 else:
                     print('User stopped')
@@ -812,7 +833,7 @@ def worker():
 
             execution_time = time.perf_counter() - execution_start_time
             print(f'Generating and saving time: {execution_time:.2f} seconds')
-
+        async_task.processing = False
         return
 
     while True:
