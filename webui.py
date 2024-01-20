@@ -17,6 +17,7 @@ import modules.meta_parser
 import args_manager
 import copy
 import launch
+import ui_wildcards_enhance
 
 from modules.sdxl_styles import legal_style_names
 from modules.private_logger import get_current_html_path
@@ -281,10 +282,12 @@ with shared.gradio_root:
                 seed_random.change(random_checked, inputs=[seed_random], outputs=[image_seed],
                                    queue=False, show_progress=False)
 
+                read_wildcard_in_order_checkbox = gr.Checkbox(label="Read wildcard in order with same seed", value=False)
+
                 if not args_manager.args.disable_image_log:
                     gr.HTML(f'<a href="/file={get_current_html_path(output_format)}" target="_blank">\U0001F4DA History Log</a>')
 
-            with gr.Tab(label='Styles'):
+            with gr.Tab(label='Styles', elem_classes=['style_selections_tab']):
                 style_sorter.try_load_sorted_styles(
                     style_names=legal_style_names,
                     default_selected=modules.config.default_styles)
@@ -529,6 +532,9 @@ with shared.gradio_root:
                 model_refresh.click(model_refresh_clicked, [],  model_refresh_output + lora_ctrls,
                                     queue=False, show_progress=False)
 
+            # ui_wildcards_enhance tab. Annotation tags for searching xhoxye
+            ui_wildcards_enhance.ui_wildcards_enhance(prompt) 
+
             with gr.Tab(label='Audio'):
                 play_notification = gr.Checkbox(label='Play notification after rendering', value=False)
                 notification_file = 'notification.mp3'
@@ -592,7 +598,6 @@ with shared.gradio_root:
                 .then(fn=style_sorter.sort_styles, inputs=style_selections, outputs=style_selections, queue=False, show_progress=False) \
                 .then(lambda: None, _js='()=>{refresh_style_localization();}')
 
-
         performance_selection.change(lambda x: [gr.update(interactive=x != 'Extreme Speed')] * 11 +
                                                [gr.update(visible=x != 'Extreme Speed')] * 1 +
                                                [gr.update(interactive=x != 'Extreme Speed', value=x == 'Extreme Speed', )] * 1,
@@ -644,7 +649,7 @@ with shared.gradio_root:
 
         ctrls = [
             currentTask, prompt, negative_prompt, translate_prompts, style_selections,
-            performance_selection, aspect_ratios_selection, image_number, output_format, image_seed, sharpness, guidance_scale
+            performance_selection, aspect_ratios_selection, image_number, output_format, image_seed, read_wildcard_in_order_checkbox, sharpness, guidance_scale
         ]
 
         ctrls += [base_model, refiner_model, refiner_switch] + lora_ctrls
