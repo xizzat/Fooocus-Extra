@@ -1,5 +1,7 @@
 import ldm_patched.modules.args_parser as args_parser
+import os
 
+from tempfile import gettempdir
 
 args_parser.parser.add_argument("--share", action='store_true', help="Set whether to share on Gradio.")
 
@@ -23,6 +25,9 @@ args_parser.parser.add_argument("--disable-image-log", action='store_true',
 args_parser.parser.add_argument("--disable-analytics", action='store_true',
                                 help="Disables analytics for Gradio.")
 
+args_parser.parser.add_argument("--disable-metadata", action='store_true',
+                                help="Disables saving metadata to images.")
+
 args_parser.parser.set_defaults(
     disable_cuda_malloc=True,
     in_browser=True,
@@ -37,5 +42,11 @@ args_parser.args.always_offload_from_vram = not args_parser.args.disable_offload
 if args_parser.args.disable_analytics:
     import os
     os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
+
+if args_parser.args.disable_in_browser:
+    args_parser.args.in_browser = False
+
+if args_parser.args.temp_path is None:
+    args_parser.args.temp_path = os.path.join(gettempdir(), 'Fooocus')
 
 args = args_parser.args
