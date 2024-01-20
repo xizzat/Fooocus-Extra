@@ -162,6 +162,45 @@ def ui_wildcards_enhance(prompt):
             #创建一个复选框，标签为“添加前先清空原有提示词”
             clear_before_add_prompt_checkbox = gr.Checkbox(label="Clear before add", value=True)
 
+            gr.ClearButton([
+                wildcard_xhox_11_dropdown,
+                wildcard_xhox_12_dropdown,
+                wildcard_xhox_13_dropdown,
+                wildcard_xhox_14_dropdown,
+                wildcard_xhox_15_dropdown,
+                wildcard_xhox_16_dropdown,
+                wildcard_xhox_17_dropdown,
+
+                wildcard_xhox_21_dropdown,
+                wildcard_xhox_22_dropdown,
+                wildcard_xhox_23_dropdown,
+                wildcard_xhox_24_dropdown,
+                wildcard_xhox_25_dropdown,
+                wildcard_xhox_26_dropdown,
+                wildcard_xhox_27_dropdown,
+                wildcard_xhox_28_dropdown,
+
+                wildcard_xhox_31_dropdown,
+                wildcard_xhox_32_dropdown,
+                wildcard_xhox_33_dropdown,
+                wildcard_xhox_34_dropdown,
+                wildcard_xhox_35_dropdown,
+
+                wildcard_xhox_40_dropdown,
+                wildcard_xhox_41_dropdown,
+                wildcard_xhox_42_dropdown,
+                wildcard_xhox_43_dropdown,
+                wildcard_xhox_44_dropdown,
+                wildcard_xhox_45_dropdown,
+                wildcard_xhox_46_dropdown,
+
+                wildcard_xhox_51_dropdown,
+                wildcard_xhox_52_dropdown,
+                wildcard_xhox_53_dropdown,
+                wildcard_xhox_54_dropdown,
+                wildcard_xhox_55_dropdown,
+                wildcard_xhox_56_dropdown
+            ])
 
         #创建一个按钮点击事件处理器，拼接捏人数据提示词并添加到提示框中
         def add_xhox_artist_to_prompt(prompt, clear_before_add_prompt_checkbox, *args):
