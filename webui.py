@@ -11,7 +11,6 @@ import modules.async_worker as worker
 import modules.constants as constants
 import modules.flags as flags
 import modules.gradio_hijack as grh
-import modules.advanced_parameters as advanced_parameters
 import modules.style_sorter as style_sorter
 import modules.meta_parser
 import args_manager
@@ -26,9 +25,9 @@ from modules.auth import auth_enabled, check_auth
 
 def get_task(*args):
     args = list(args)
-    currentTask = args.pop(0)
-    currentTask = worker.AsyncTask(args=args)
-    return currentTask
+    args.pop(0)
+
+    return worker.AsyncTask(args=args)
 
 def generate_clicked(task):
     import ldm_patched.modules.model_management as model_management
@@ -66,7 +65,7 @@ def generate_clicked(task):
             if flag == 'results':
                 yield gr.update(visible=True), \
                     gr.update(visible=True), \
-                    gr.update(visible=True, value=product) if not advanced_parameters.disable_intermediate_results and advanced_parameters.sampler_name != 'lcm' else gr.update(), \
+                    gr.update(visible=True, value=product), \
                     gr.update(visible=False)
             if flag == 'finish':
                 yield gr.update(visible=False), \
@@ -284,8 +283,14 @@ with shared.gradio_root:
 
                 read_wildcard_in_order_checkbox = gr.Checkbox(label="Read wildcard in order with same seed", value=False)
 
-                if not args_manager.args.disable_image_log:
-                    gr.HTML(f'<a href="/file={get_current_html_path(output_format)}" target="_blank">\U0001F4DA History Log</a>')
+                def update_history_link():
+                    if args_manager.args.disable_image_log:
+                        return gr.update(value='')
+                    
+                    return gr.update(value=f'<a href="file={get_current_html_path()}" target="_blank">\U0001F4DA History Log</a>')
+
+                history_link = gr.HTML()
+                shared.gradio_root.load(update_history_link,outputs=history_link)
 
             with gr.Tab(label='Styles', elem_classes=['style_selections_tab']):
                 style_sorter.try_load_sorted_styles(
@@ -481,7 +486,7 @@ with shared.gradio_root:
                                                                  '(default is 0, always process before any mask invert)')
                         inpaint_mask_upload_checkbox = gr.Checkbox(label='Enable Mask Upload', value=False)
                         invert_mask_checkbox = gr.Checkbox(label='Invert Mask', value=False)
-                        
+
                         inpaint_ctrls = [debugging_inpaint_preprocessor, inpaint_disable_initial_latent, inpaint_engine,
                                          inpaint_strength, inpaint_respective_field,
                                          inpaint_mask_upload_checkbox, invert_mask_checkbox, inpaint_erode_or_dilate]
@@ -497,15 +502,6 @@ with shared.gradio_root:
                         freeu_s1 = gr.Slider(label='S1', minimum=0, maximum=4, step=0.01, value=0.99)
                         freeu_s2 = gr.Slider(label='S2', minimum=0, maximum=4, step=0.01, value=0.95)
                         freeu_ctrls = [freeu_enabled, freeu_b1, freeu_b2, freeu_s1, freeu_s2]
-
-                adps = [disable_preview, disable_intermediate_results, black_out_nsfw, adm_scaler_positive, adm_scaler_negative, adm_scaler_end, adaptive_cfg, sampler_name,
-                        scheduler_name, generate_image_grid, overwrite_step, overwrite_switch, overwrite_width, overwrite_height,
-                        overwrite_vary_strength, overwrite_upscale_strength,
-                        mixing_image_prompt_and_vary_upscale, mixing_image_prompt_and_inpaint,
-                        debugging_cn_preprocessor, skipping_cn_preprocessor, controlnet_softness,
-                        canny_low_threshold, canny_high_threshold, refiner_swap_method]
-                adps += freeu_ctrls
-                adps += inpaint_ctrls
 
                 def dev_mode_checked(r):
                     return gr.update(visible=r)
@@ -647,8 +643,9 @@ with shared.gradio_root:
             inpaint_strength, inpaint_respective_field
         ], show_progress=False, queue=False)
 
-        ctrls = [
-            currentTask, prompt, negative_prompt, translate_prompts, style_selections,
+        ctrls = [currentTask, generate_image_grid]
+        ctrls += [
+            prompt, negative_prompt, translate_prompts, style_selections,
             performance_selection, aspect_ratios_selection, image_number, output_format, image_seed, read_wildcard_in_order_checkbox, sharpness, guidance_scale
         ]
 
@@ -656,6 +653,15 @@ with shared.gradio_root:
         ctrls += [input_image_checkbox, current_tab]
         ctrls += [uov_method, uov_input_image]
         ctrls += [outpaint_selections, inpaint_input_image, inpaint_additional_prompt, inpaint_mask_image]
+        ctrls += [disable_preview, disable_intermediate_results, black_out_nsfw]
+        ctrls += [adm_scaler_positive, adm_scaler_negative, adm_scaler_end, adaptive_cfg]
+        ctrls += [sampler_name, scheduler_name]
+        ctrls += [overwrite_step, overwrite_switch, overwrite_width, overwrite_height, overwrite_vary_strength]
+        ctrls += [overwrite_upscale_strength, mixing_image_prompt_and_vary_upscale, mixing_image_prompt_and_inpaint]
+        ctrls += [debugging_cn_preprocessor, skipping_cn_preprocessor, canny_low_threshold, canny_high_threshold]
+        ctrls += [refiner_swap_method, controlnet_softness]
+        ctrls += freeu_ctrls
+        ctrls += inpaint_ctrls
 
         if not args_manager.args.disable_metadata:
             ctrls += [save_metadata_to_images, metadata_scheme]
@@ -688,11 +694,11 @@ with shared.gradio_root:
         generate_button.click(lambda: (gr.update(visible=True, interactive=True), gr.update(visible=True, interactive=True), gr.update(visible=False, interactive=False), [], True),
                               outputs=[stop_button, skip_button, generate_button, gallery, state_is_generating]) \
             .then(fn=refresh_seed, inputs=[seed_random, image_seed], outputs=image_seed) \
-            .then(advanced_parameters.set_all_advanced_parameters, inputs=adps) \
             .then(fn=get_task, inputs=ctrls, outputs=currentTask) \
             .then(fn=generate_clicked, inputs=currentTask, outputs=[progress_html, progress_window, progress_gallery, gallery]) \
             .then(lambda: (gr.update(visible=True, interactive=True), gr.update(visible=False, interactive=False), gr.update(visible=False, interactive=False), False),
                   outputs=[generate_button, stop_button, skip_button, state_is_generating]) \
+            .then(fn=update_history_link, outputs=history_link) \
             .then(fn=lambda: None, _js='playNotification').then(fn=lambda: None, _js='refresh_grid_delayed')
 
         def trigger_describe(mode, img):

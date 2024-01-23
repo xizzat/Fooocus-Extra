@@ -5,7 +5,7 @@ The purpose of this fork is to add new features / fix bugs and contribute back t
 Included adjustments:
 
 * ✨ https://github.com/lllyasviel/Fooocus/pull/958 - NSFW image censoring (config and UI)
-* 🐛 https://github.com/lllyasviel/Fooocus/pull/981 - prevent users from skipping/stopping other users tasks in queue (multi-user capabilities)
+* 🐛 https://github.com/lllyasviel/Fooocus/pull/981 - prevent users from skipping/stopping other users tasks in queue (multi-user capabilities) + rework advanced_parameters (removal + PID handling)
 * ✨ https://github.com/lllyasviel/Fooocus/pull/985 - add list of 100 animals to wildcards
 * ✨ https://github.com/lllyasviel/Fooocus/pull/1013 - add advanced parameter for disable_intermediate_results (progress_gallery, prevents UI lag when generation is too fast)
 * ✨ https://github.com/lllyasviel/Fooocus/pull/1039 - add prompt translation
@@ -26,6 +26,7 @@ Included adjustments:
 * ✨ https://github.com/lllyasviel/Fooocus/pull/1863 - image extension support (png, jpg, webp)
 * ✨ https://github.com/lllyasviel/Fooocus/pull/1938 - automatically describe image on uov image upload if prompt is empty
 * ✨ https://github.com/lllyasviel/Fooocus/pull/1940 - meta data handling, schemes: Fooocus (json) and A1111 (plain text). Compatible with Civitai.
+* ✨ https://github.com/lllyasviel/Fooocus/pull/1979 - prevent outdated history log link after midnight
 
 ✨ = new feature<br>
 🐛 = bugfix<br>
