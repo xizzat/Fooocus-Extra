@@ -47,6 +47,10 @@ performance_selections = [
 
 output_formats = ['png', 'jpg', 'webp']
 
+inpaint_mask_models = [
+    'u2net', 'u2netp', 'silueta', 'isnet-general-use', 'isnet-anime'
+]
+
 inpaint_option_default = 'Inpaint or Outpaint (default)'
 inpaint_option_detail = 'Improve Detail (face, hand, eyes, etc.)'
 inpaint_option_modify = 'Modify Content (add objects, change background, etc.)'
