@@ -8,7 +8,7 @@ import modules.sdxl_styles
 
 from modules.model_loader import load_file_from_url
 from modules.util import get_files_from_folder
-
+from modules.flags import Performance, MetadataScheme, lora_count
 
 config_path = os.path.abspath("./config.txt")
 config_example_path = os.path.abspath("config_modification_tutorial.txt")
@@ -17,9 +17,16 @@ always_save_keys = []
 visited_keys = []
 
 try:
+    with open(os.path.abspath(f'./presets/default.json'), "r", encoding="utf-8") as json_file:
+        config_dict.update(json.load(json_file))
+except Exception as e:
+    print(f'Load default preset failed.')
+    print(e)
+
+try:
     if os.path.exists(config_path):
         with open(config_path, "r", encoding="utf-8") as json_file:
-            config_dict = json.load(json_file)
+            config_dict.update(json.load(json_file))
             always_save_keys = list(config_dict.keys())
 except Exception as e:
     print(f'Failed to load config file "{config_path}" . The reason is: {str(e)}')
@@ -127,15 +134,20 @@ def try_load_preset_global(preset):
             print(e)
 
 
-try:
-    with open(os.path.abspath(f'./presets/default.json'), "r", encoding="utf-8") as json_file:
-        config_dict.update(json.load(json_file))
-except Exception as e:
-    print(f'Load default preset failed.')
-    print(e)
-
 preset = args_manager.args.preset
 try_load_preset_global(preset)
+
+def get_path_output(make_directory=False) -> str:
+    """
+    Checking output path argument and overriding default path.
+    """
+    global config_dict
+    path_output = get_dir_or_set_default('path_outputs', '../outputs/', make_directory)
+    if args_manager.args.output_path:
+        print(f'[CONFIG] Overriding config value path_outputs with {args_manager.args.output_path}')
+        config_dict['path_outputs'] = path_output = args_manager.args.output_path
+    return path_output
+
 
 def get_dir_or_set_default(key, default_value, make_directory=False):
     global config_dict, visited_keys, always_save_keys
@@ -173,8 +185,8 @@ path_inpaint = get_dir_or_set_default('path_inpaint', '../models/inpaint/')
 path_controlnet = get_dir_or_set_default('path_controlnet', '../models/controlnet/')
 path_clip_vision = get_dir_or_set_default('path_clip_vision', '../models/clip_vision/')
 path_fooocus_expansion = get_dir_or_set_default('path_fooocus_expansion', '../models/prompt_expansion/fooocus_expansion')
-path_outputs = get_dir_or_set_default('path_outputs', '../outputs/', True)
 path_safety_checker_models = get_dir_or_set_default('path_safety_checker_models', '../models/safety_checker_models/')
+path_outputs = get_path_output(True)
 
 
 def get_config_item_or_set_default(key, default_value, validator, disable_empty_as_none=False):
@@ -289,7 +301,7 @@ default_prompt = get_config_item_or_set_default(
 )
 default_performance = get_config_item_or_set_default(
     key='default_performance',
-    default_value='Speed',
+    default_value=Performance.SPEED.value,
     validator=lambda x: x in [y[1] for y in modules.flags.performance_selections if y[1] == x]
 )
 default_advanced_checkbox = get_config_item_or_set_default(
@@ -377,7 +389,7 @@ default_save_metadata_to_images = get_config_item_or_set_default(
 )
 default_metadata_scheme = get_config_item_or_set_default(
     key='default_metadata_scheme',
-    default_value='fooocus',
+    default_value=MetadataScheme.FOOOCUS.value,
     validator=lambda x: x in [y[1] for y in modules.flags.metadata_scheme if y[1] == x]
 )
 metadata_created_by = get_config_item_or_set_default(
@@ -411,24 +423,25 @@ default_inpaint_mask_sam_model = get_config_item_or_set_default(
     validator=lambda x: x in modules.flags.inpaint_mask_sam_model
 )
 
-config_dict["default_loras"] = default_loras = default_loras[:5] + [['None', 1.0] for _ in range(5 - len(default_loras))]
+config_dict["default_loras"] = default_loras = default_loras[:lora_count] + [['None', 1.0] for _ in range(lora_count - len(default_loras))]
 
 # mapping config to meta parameter 
 possible_preset_keys = {
-    "default_model": "Base Model",
-    "default_refiner": "Refiner Model",
-    "default_refiner_switch": "Refiner Switch",
+    "default_model": "base_model",
+    "default_refiner": "refiner_model",
+    "default_refiner_switch": "refiner_switch",
     "previous_default_models": "previous_default_models",
     "default_loras": "<processed>",
-    "default_cfg_scale": "Guidance Scale",
-    "default_sample_sharpness": "Sharpness",
-    "default_sampler": "Sampler",
-    "default_scheduler": "Scheduler",
-    "default_performance": "Performance",
-    "default_prompt": "Prompt",
-    "default_prompt_negative": "Negative Prompt",
-    "default_styles": "Styles",
-    "default_aspect_ratio": "Resolution",
+    "default_cfg_scale": "guidance_scale",
+    "default_sample_sharpness": "sharpness",
+    "default_sampler": "sampler",
+    "default_scheduler": "scheduler",
+    "default_overwrite_step": "steps",
+    "default_performance": "performance",
+    "default_prompt": "prompt",
+    "default_prompt_negative": "negative_prompt",
+    "default_styles": "styles",
+    "default_aspect_ratio": "resolution",
     "checkpoint_downloads": "checkpoint_downloads",
     "embeddings_downloads": "embeddings_downloads",
     "lora_downloads": "lora_downloads",
