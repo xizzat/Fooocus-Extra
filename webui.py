@@ -1,6 +1,7 @@
 import gradio as gr
 import random
 import os
+import sys
 import json
 import time
 import shared
@@ -13,10 +14,13 @@ import modules.flags as flags
 import modules.gradio_hijack as grh
 import modules.style_sorter as style_sorter
 import modules.meta_parser
+import modules.pm as pm
+import modules.instantid as instantid
 import args_manager
 import copy
 import launch
 import ui_wildcards_enhance
+import PIL.Image as Image
 
 from modules.sdxl_styles import legal_style_names
 from modules.private_logger import get_current_html_path
@@ -30,13 +34,16 @@ def get_task(*args):
 
     return worker.AsyncTask(args=args)
 
-def generate_clicked(task):
+def generate_clicked(*args):    
+
     import ldm_patched.modules.model_management as model_management
 
     with model_management.interrupt_processing_mutex:
         model_management.interrupt_processing = False
     # outputs=[progress_html, progress_window, progress_gallery, gallery]
     execution_start_time = time.perf_counter()
+
+    task = worker.AsyncTask(args=list(args))
     finished = False
 
     yield gr.update(visible=True, value=modules.html.make_progress_html(1, 'Waiting for task to start ...')), \
@@ -83,7 +90,6 @@ def generate_clicked(task):
     execution_time = time.perf_counter() - execution_start_time
     print(f'Total time: {execution_time:.2f} seconds')
     return
-
 
 reload_javascript()
 
@@ -292,6 +298,62 @@ with shared.gradio_root:
 
                         metadata_input_image.upload(trigger_metadata_preview, inputs=metadata_input_image,
                                                     outputs=metadata_json, queue=False, show_progress=True)
+                    with gr.TabItem(label="Inswapper") as inswapper_tab:
+                        with gr.Row():
+                            with gr.Column():
+                                inswapper_enabled = gr.Checkbox(label="Enabled", value=False)
+                                inswapper_target_image_index = gr.Number(label = "Target Image Index", info="-1 will swap all faces, otherwise provide the 0-based index of the face (0, 1, etc)")
+                            with gr.Column():
+                                inswapper_source_image = grh.Image(label='Source Face Image', source='upload', type='numpy')
+                    with gr.TabItem(label="PhotoMaker") as photomaker_tab:
+                        with gr.Row():
+                            with gr.Column():
+                                photomaker_enabled = gr.Checkbox(label="Enabled", value=False)
+                                def handle_model(value):
+                                    if value is False:                                        
+                                        pm.unload_model()
+                                photomaker_enabled.change(fn=handle_model, inputs=[photomaker_enabled])
+                        with gr.Row():
+                            with gr.Column():
+                                def swap_to_gallery(images):
+                                    pil_images = []
+                                    for image in images:
+                                        print(f"image path: {image.name}")
+                                        pil_images.append(Image.open(image.name))                                        
+                                    return gr.update(value=pil_images, visible=True), gr.update(visible=True), gr.update(visible=False)
+
+                                photomaker_images = gr.Files(label="Drag (Select) 1 or more photos of your face", file_types=["image"])
+                                photomaker_gallery_images = gr.Gallery(label="Source Face Images", columns=5, rows=1, height=200)
+                                photomaker_images.upload(fn=swap_to_gallery, inputs=photomaker_images, outputs=[photomaker_gallery_images, photomaker_images])
+
+                    with gr.TabItem(label="InstantID") as instantid_tab:
+                        with gr.Row():
+                            with gr.Column():
+                                instantid_enabled = gr.Checkbox(label="Enabled", value=False)
+                                def handle_model(value):
+                                    if value is False:
+                                        instantid.unload_model()
+                                instantid_enabled.change(fn=handle_model, inputs=[instantid_enabled])
+                            with gr.Column():
+                                instantid_identitynet_strength_ratio = gr.Slider(
+                                    label="IdentityNet strength (for fidelity)",
+                                    minimum=0,
+                                    maximum=1.5,
+                                    step=0.05,
+                                    value=0.80,
+                                )
+                                instantid_adapter_strength_ratio = gr.Slider(
+                                    label="Image adapter strength (for detail)",
+                                    minimum=0,
+                                    maximum=1.5,
+                                    step=0.05,
+                                    value=0.80,
+                                )                                
+                        with gr.Row():
+                            with gr.Column():                            
+                                instantid_source_image_path = grh.Image(label='Source Face Image', source='upload', type='filepath')
+                            with gr.Column():
+                                instantid_pose_image_path = grh.Image(label='Source Pose Image', source='upload', type='filepath', tool='sketch', brush_color="#FFFFFF", elem_id='inpaint_canvas')
 
             switch_js = "(x) => {if(x){viewer_to_bottom(100);viewer_to_bottom(500);}else{viewer_to_top();} return x;}"
             down_js = "() => {viewer_to_bottom();}"
@@ -305,6 +367,9 @@ with shared.gradio_root:
             inpaint_tab.select(lambda: 'inpaint', outputs=current_tab, queue=False, _js=down_js, show_progress=False)
             ip_tab.select(lambda: 'ip', outputs=current_tab, queue=False, _js=down_js, show_progress=False)
             desc_tab.select(lambda: 'desc', outputs=current_tab, queue=False, _js=down_js, show_progress=False)
+            inswapper_tab.select(lambda: 'inswapper', outputs=current_tab, queue=False, _js=down_js, show_progress=False)
+            photomaker_tab.select(lambda: 'photomaker', outputs=current_tab, queue=False, _js=down_js, show_progress=False)
+            instantid_tab.select(lambda: 'instantid', outputs=current_tab, queue=False, _js=down_js, show_progress=False)
 
         with gr.Column(scale=1, visible=modules.config.default_advanced_checkbox) as advanced_column:
             with gr.Tab(label='Settings'):
@@ -666,7 +731,7 @@ with shared.gradio_root:
         
         advanced_checkbox.change(lambda x: gr.update(visible=x), advanced_checkbox, advanced_column,
                                  queue=False, show_progress=False) \
-            .then(fn=lambda: None, _js='refresh_grid_delayed', queue=False, show_progress=False)
+            .then(fn=lambda: None, _js='refresh_grid_delayed', queue=False, show_progress=False)        
 
         def inpaint_mode_change(mode):
             assert mode in modules.flags.inpaint_options
@@ -725,6 +790,9 @@ with shared.gradio_root:
             ctrls += [save_metadata_to_images, metadata_scheme]
         
         ctrls += ip_ctrls
+        ctrls += [inswapper_enabled, inswapper_source_image, inswapper_target_image_index]
+        ctrls += [photomaker_enabled, photomaker_images]
+        ctrls += [instantid_enabled, instantid_source_image_path, instantid_pose_image_path, instantid_identitynet_strength_ratio, instantid_adapter_strength_ratio]
 
         def parse_meta(raw_prompt_txt, is_generating):
             loaded_json = None
@@ -763,9 +831,8 @@ with shared.gradio_root:
             .then(fn=get_task, inputs=ctrls, outputs=currentTask) \
             .then(fn=generate_clicked, inputs=currentTask, outputs=[progress_html, progress_window, progress_gallery, gallery]) \
             .then(lambda: (gr.update(visible=True, interactive=True), gr.update(visible=False, interactive=False), gr.update(visible=False, interactive=False), False),
-                  outputs=[generate_button, stop_button, skip_button, state_is_generating]) \
-            .then(fn=update_history_link, outputs=history_link) \
-            .then(fn=lambda: None, _js='playNotification').then(fn=lambda: None, _js='refresh_grid_delayed')
+                  outputs=[generate_button, stop_button, skip_button, state_is_generating]).then(fn=lambda: None, _js='playNotification').then(fn=lambda: None, _js='refresh_grid_delayed') \
+            .then(fn=update_history_link, outputs=history_link)
 
         def trigger_describe(mode, img):
             if mode == flags.desc_type_photo:
