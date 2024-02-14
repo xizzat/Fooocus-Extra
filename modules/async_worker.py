@@ -43,6 +43,7 @@ def worker():
     import extras.face_crop
     import fooocus_version
     import args_manager
+    import PIL.Image as Image
 
     from modules.censor import censor_batch
 
@@ -57,6 +58,11 @@ def worker():
 
     pid = os.getpid()
     print(f'Started worker with PID {pid}')
+
+    from modules.face_swap import perform_face_swap
+    from modules.pm import generate_photomaker
+    from modules.instantid import generate_instantid
+
 
     try:
         async_gradio_app = shared.gradio_root
@@ -73,7 +79,7 @@ def worker():
 
     def yield_result(async_task, imgs, black_out_nsfw, do_not_show_finished_images=False):
         if not isinstance(imgs, list):
-            imgs = [imgs]
+            imgs = [imgs]        
 
         async_task.results = async_task.results + imgs
 
@@ -84,7 +90,10 @@ def worker():
         return
 
     def build_image_wall(async_task):
-        results = async_task.results
+        if not advanced_parameters.generate_image_grid:
+            return
+
+        results = async_task.results        
 
         if len(results) < 2:
             return
@@ -93,7 +102,7 @@ def worker():
             if not isinstance(img, np.ndarray):
                 return
             if img.ndim != 3:
-                return
+                return            
 
         H, W, C = results[0].shape
 
@@ -206,6 +215,25 @@ def worker():
             if cn_img is not None:
                 cn_tasks[cn_type].append([cn_img, cn_stop, cn_weight])
 
+        inswapper_enabled = args.pop()
+        inswapper_source_image = args.pop()
+        inswapper_target_image_index = args.pop()        
+
+        print(f"Inswapper: {'ENABLED' if inswapper_enabled else 'DISABLED'}")
+
+        photomaker_enabled = args.pop()
+        photomaker_images = args.pop()
+
+        print(f"PhotoMaker: {'ENABLED' if photomaker_enabled else 'DISABLED'}")
+
+        instantid_enabled = args.pop()
+        instantid_image_path = args.pop()
+        instantid_pose_image_path = args.pop()
+        instantid_identitynet_strength_ratio = args.pop()
+        instantid_adapter_strength_ratio = args.pop()
+
+        print(f"InstantID: {'ENABLED' if instantid_enabled else 'DISABLED'}")
+
         outpaint_selections = [o.lower() for o in outpaint_selections]
         base_model_additional_loras = []
         raw_style_selections = copy.deepcopy(style_selections)
@@ -294,7 +322,7 @@ def worker():
         print(f'[Parameters] Seed = {seed}')
 
         goals = []
-        tasks = []
+        tasks = []        
 
         if input_image_checkbox:
             if (current_tab == 'uov' or (
@@ -792,6 +820,7 @@ def worker():
                 if async_task.last_stop is not False:
                     ldm_patched.model_management.interrupt_current_processing()
                 positive_cond, negative_cond = task['c'], task['uc']
+                imgs = []
 
                 if 'cn' in goals:
                     for cn_flag, cn_path in [
@@ -803,24 +832,58 @@ def worker():
                                 positive_cond, negative_cond,
                                 pipeline.loaded_ControlNets[cn_path], cn_img, cn_weight, 0, cn_stop)
 
-                imgs = pipeline.process_diffusion(
-                    positive_cond=positive_cond,
-                    negative_cond=negative_cond,
-                    steps=steps,
-                    switch=switch,
-                    width=width,
-                    height=height,
-                    image_seed=task['task_seed'],
-                    callback=callback,
-                    sampler_name=final_sampler_name,
-                    scheduler_name=final_scheduler_name,
-                    latent=initial_latent,
-                    denoise=denoising_strength,
-                    tiled=tiled,
-                    cfg_scale=cfg_scale,
-                    refiner_swap_method=refiner_swap_method,
-                    disable_preview=disable_preview
-                )
+                if current_tab == 'photomaker' and photomaker_enabled == True and input_image_checkbox == True:
+                    print("PhotoMaker: Begin")
+                    photomaker_source_images = [Image.open(image.name) for image in photomaker_images]
+
+                    photomaker_prompt = positive_basic_workloads[0]
+                    photomaker_negative_prompt = negative_basic_workloads[0]
+
+                    # TODO: figure out 77 token limit
+                    # https://github.com/huggingface/diffusers/issues/2136#issuecomment-1514969011                    
+                    # if use_expansion:
+                    #     photomaker_prompt = photomaker_prompt + ' ' +  expansion.replace(prompt, "")
+                    
+                    print(f"PhotoMaker: Positive prompt: {photomaker_prompt}")
+                    print(f"PhotoMaker: Negative prompt: {photomaker_negative_prompt}")
+
+                    imgs = generate_photomaker(photomaker_prompt, photomaker_source_images, photomaker_negative_prompt, steps, task['task_seed'], width, height, guidance_scale, loras, sampler_name, scheduler_name, async_task)
+
+                elif current_tab == 'instantid' and instantid_enabled == True and input_image_checkbox == True:
+                    print("InstantID: Begin")
+
+                    instantid_prompt = positive_basic_workloads[0]
+                    instantid_negative_prompt = negative_basic_workloads[0]
+
+                    # TODO: figure out 77 token limit
+                    # https://github.com/huggingface/diffusers/issues/2136#issuecomment-1514969011                    
+                    # if use_expansion:
+                    #     photomaker_prompt = photomaker_prompt + ' ' +  expansion.replace(prompt, "")
+                    
+                    print(f"InstantID: Positive prompt: {instantid_prompt}")
+                    print(f"InstantID: Negative prompt: {instantid_negative_prompt}")
+
+                    imgs = generate_instantid(instantid_image_path, instantid_pose_image_path, instantid_prompt, instantid_negative_prompt, steps, task['task_seed'], width, height, guidance_scale, loras, sampler_name, scheduler_name, async_task, instantid_identitynet_strength_ratio, instantid_adapter_strength_ratio)
+
+                else:
+                    imgs = pipeline.process_diffusion(
+                        positive_cond=positive_cond,
+                        negative_cond=negative_cond,
+                        steps=steps,
+                        switch=switch,
+                        width=width,
+                        height=height,
+                        image_seed=task['task_seed'],
+                        callback=callback,
+                        sampler_name=final_sampler_name,
+                        scheduler_name=final_scheduler_name,
+                        latent=initial_latent,
+                        denoise=denoising_strength,
+                        tiled=tiled,
+                        cfg_scale=cfg_scale,
+                        refiner_swap_method=refiner_swap_method
+                        disable_preview=disable_preview
+                    )
 
                 del task['c'], task['uc'], positive_cond, negative_cond  # Save memory
 
@@ -828,6 +891,8 @@ def worker():
                     imgs = [inpaint_worker.current_task.post_process(x) for x in imgs]
 
                 img_paths = []
+                if inswapper_enabled and input_image_checkbox:
+                    imgs = perform_face_swap(imgs, inswapper_source_image, inswapper_target_image_index)                    
 
                 for x in imgs:
                     d = [('Prompt', 'prompt', task['log_positive_prompt']),
