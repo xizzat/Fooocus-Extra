@@ -34,7 +34,7 @@ def get_task(*args):
 
     return worker.AsyncTask(args=args)
 
-def generate_clicked(*args):    
+def generate_clicked(task):    
 
     import ldm_patched.modules.model_management as model_management
 
@@ -42,8 +42,6 @@ def generate_clicked(*args):
         model_management.interrupt_processing = False
     # outputs=[progress_html, progress_window, progress_gallery, gallery]
     execution_start_time = time.perf_counter()
-
-    task = worker.AsyncTask(args=list(args))
     finished = False
 
     yield gr.update(visible=True, value=modules.html.make_progress_html(1, 'Waiting for task to start ...')), \
@@ -785,10 +783,8 @@ with shared.gradio_root:
         ctrls += [refiner_swap_method, controlnet_softness]
         ctrls += freeu_ctrls
         ctrls += inpaint_ctrls
-
         if not args_manager.args.disable_metadata:
             ctrls += [save_metadata_to_images, metadata_scheme]
-        
         ctrls += ip_ctrls
         ctrls += [inswapper_enabled, inswapper_source_image, inswapper_target_image_index]
         ctrls += [photomaker_enabled, photomaker_images]

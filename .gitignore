@@ -52,6 +52,8 @@ user_path_config-deprecated.txt
 /package-lock.json
 /.coverage*
 /auth.json
+/models/
+insightface-0.7.3-cp310-cp310-win_amd64.whl
 
 # Fooocus-inswapper
 inswapper
