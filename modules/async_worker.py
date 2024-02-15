@@ -881,7 +881,7 @@ def worker():
                         denoise=denoising_strength,
                         tiled=tiled,
                         cfg_scale=cfg_scale,
-                        refiner_swap_method=refiner_swap_method
+                        refiner_swap_method=refiner_swap_method,
                         disable_preview=disable_preview
                     )
 
